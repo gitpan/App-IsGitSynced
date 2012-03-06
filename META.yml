@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:               App-IsGitSynced
-version:            0.01
+version:            0.02
 abstract:           script to find out if the local git repo is fully synced
 author:
     - Ivan Bessarabov <ivan@bessarabov.ru>
