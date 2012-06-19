@@ -8,7 +8,7 @@ is_git_synced - script to find out if the local git repo is fully synced
 
 =head1 VERSION
 
-Version 0.02
+Version 0.03
 
 =head1 SYNOPSIS
 
@@ -18,13 +18,14 @@ is_git_synced [options] dir1 [dir2 ...]
 
       --quiet           Script will not output anything
       --only_errors     Script will write only dirs with errors
+      --show_ok         Show 'ok' message if everthing is synced
       --help            Show this message
       --version         Show version number
 
-Script checks every specifeid dir if it is a git repo and it has ho local
-changes that are not in remote repsitory origin. Script by default will output
-information about every checked dir in separate line. The exit status will
-be 0 if everything is synced and 1 otherwise.
+Script checks every specified dir if it is a git repo and it has ho local
+changes that are not in remote repository origin. Script by default will
+output information about every checking dir in the separate line. The exit
+status will be 0 if everything is synced and 1 otherwise.
 
 Project url: https://github.com/bessarabov/App-IsGitSynced
 
@@ -34,48 +35,13 @@ Ivan Bessarabov, C<< <ivan@bessarabov.ru> >>
 
 =head1 SOURCE CODE
 
-The source code for this module is hosted on GitHub L<https://github.com/bessarabov/App-IsGitSynced>
+The source code for this module is hosted on GitHub
+L<https://github.com/bessarabov/App-IsGitSynced>
 
 =head1 BUGS
 
-Please report any bugs or feature requests to C<bug-app-isgitsynced at rt.cpan.org>, or through
-the web interface at L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=App-IsGitSynced>.  I will be notified, and then you'll
-automatically be notified of progress on your bug as I make changes.
-
-Or you can use GitHub Issues L<https://github.com/bessarabov/App-IsGitSynced/issues>
-
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc App::IsGitSynced
-
-
-You can also look for information at:
-
-=over 4
-
-=item * RT: CPAN's request tracker
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=App-IsGitSynced>
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/App-IsGitSynced>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/App-IsGitSynced>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/App-IsGitSynced/>
-
-=back
-
-
-=head1 ACKNOWLEDGEMENTS
-
+Please report any bugs or feature requests in GitHub Issues
+L<https://github.com/bessarabov/App-IsGitSynced/issues>
 
 =head1 LICENSE AND COPYRIGHT
 
@@ -92,31 +58,49 @@ See http://dev.perl.org/licenses/ for more information.
 use strict;
 use warnings FATAL => 'all';
 use Pod::Usage;
+use Term::ANSIColor qw(:constants);
+use Hash::Util qw(lock_keys);
 
-our $VERSION = 0.02;
+our $VERSION = 0.03;
 
 # 'constants'
 my $true  = 1;
 my $false = '';
 
-# global vars
-my $quiet = $false;
-my $only_errors = $false;
-my $can_print_in_color = eval 'require Term::ANSIColor; 1';
+my $success_exit_status = 0;
+my $error_exit_status   = 1;
 
-if ($can_print_in_color) {
-    import Term::ANSIColor ':constants';
-} else {
-    *RESET  = sub { };
-    *RED    = sub { };
-}
+# global vars
+my %options = (
+    '--quiet'       => $false,
+    '--only_errors' => $false,
+    '--show_ok'     => $false,
+    '--help'        => $false,
+    '--version'     => $false,
+);
+lock_keys(%options); # To make sure you haven't misspelled key
 
 # subs
+sub get_paths_and_set_options {
+
+    my @paths;
+
+    foreach my $argv (@ARGV) {
+        if ($argv ~~ [keys %options]) {
+            $options{$argv} = $true;
+        } else {
+            push @paths, $argv;
+        }
+    }
+
+    return @paths;
+}
+
 sub error {
     my ($message) = @_;
 
-    if (!$quiet) {
-        if ($can_print_in_color and -t STDOUT) {
+    if (!$options{'--quiet'}) {
+        if (-t STDOUT) {
             print RED();
             print "Error: $message\n";
             print RESET();
@@ -181,6 +165,7 @@ sub has_divergences_with_origin {
     my @branches = map { s/..(.*)/$1/; $_; } split(/\n/, $output);
 
     foreach my $branch (@branches) {
+        next if $branch eq '(no branch)';
         my $local = `cd $path; git rev-parse --verify $branch 2>&1`;
         my $origin = `cd $path; git rev-parse --verify origin/$branch 2>&1`;
         return $true if $local ne $origin;
@@ -225,21 +210,15 @@ my $checks = [
 ];
 
 # main
-my @paths;
+my @paths = get_paths_and_set_options();
 
-foreach my $argv (@ARGV) {
-    if ($argv eq '--quiet') {
-        $quiet = $true;
-    } elsif ($argv eq '--only_errors') {
-        $only_errors = $true;
-    } elsif ($argv eq '--help') {
-        pod2usage();
-    } elsif ($argv eq '--version') {
-        print "is_git_synced $VERSION\n";
-        exit 2;
-    } else {
-        push @paths, $argv;
-    }
+if ($options{'--help'}) {
+    pod2usage({
+        -exitval => $success_exit_status,
+    });
+} elsif ($options{'--version'}) {
+    print "is_git_synced $VERSION\n";
+    exit $success_exit_status;
 }
 
 my $was_error;
@@ -264,8 +243,17 @@ foreach my $path (@paths) {
     if ($local_error) {
         $was_error++;
     } else {
-        print "Success: path '$path' has no local changes and fully synced to remote\n" if (!$quiet && !$only_errors);
+        print "Success: path '$path' has no local changes and fully synced to remote\n" if (!$options{'--quiet'} && !$options{'--only_errors'});
     }
 }
 
-exit 1 if $was_error;
+if (!$was_error) {
+    if ($options{'--show_ok'}) {
+        print GREEN();
+        print "ok\n";
+        print RESET();
+    }
+    exit $success_exit_status;
+} else {
+    exit $error_exit_status;
+}
