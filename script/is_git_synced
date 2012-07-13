@@ -4,11 +4,11 @@
 
 =head1 NAME
 
-is_git_synced - script to find out if the local git repo is fully synced
+is_git_synced - script to find out if the local git repos are fully synced
 
 =head1 VERSION
 
-Version 0.03
+Version 0.04
 
 =head1 SYNOPSIS
 
@@ -18,11 +18,12 @@ is_git_synced [options] dir1 [dir2 ...]
 
       --quiet           Script will not output anything
       --only_errors     Script will write only dirs with errors
+      --ignore_missing  Will ignore missing dirs
       --show_ok         Show 'ok' message if everthing is synced
       --help            Show this message
       --version         Show version number
 
-Script checks every specified dir if it is a git repo and it has ho local
+Script checks every specified dir if it is a git repo and it has no local
 changes that are not in remote repository origin. Script by default will
 output information about every checking dir in the separate line. The exit
 status will be 0 if everything is synced and 1 otherwise.
@@ -61,24 +62,32 @@ use Pod::Usage;
 use Term::ANSIColor qw(:constants);
 use Hash::Util qw(lock_keys);
 
-our $VERSION = 0.03;
+our $VERSION = 0.04;
 
 # 'constants'
-my $true  = 1;
-my $false = '';
+my $TRUE  = 1;
+my $FALSE = '';
 
-my $success_exit_status = 0;
-my $error_exit_status   = 1;
+my $SUCCESS_EXIT_STATUS = 0;
+my $ERROR_EXIT_STATUS   = 1;
 
 # global vars
-my %options = (
-    '--quiet'       => $false,
-    '--only_errors' => $false,
-    '--show_ok'     => $false,
-    '--help'        => $false,
-    '--version'     => $false,
+my %OPTIONS = (
+    '--quiet'          => $FALSE,
+    '--only_errors'    => $FALSE,
+    '--ignore_missing' => $FALSE,
+    '--version'        => $FALSE,
+    '--show_ok'        => $FALSE,
+    '--help'           => $FALSE,
 );
-lock_keys(%options); # To make sure you haven't misspelled key
+lock_keys(%OPTIONS); # To make sure you haven't misspelled key
+
+my %STATUSES = (
+    'success' => 1,
+    'fail'    => 2,
+    'skip'    => 3,
+);
+lock_keys(%STATUSES); # To make sure you haven't misspelled key
 
 # subs
 sub get_paths_and_set_options {
@@ -86,8 +95,8 @@ sub get_paths_and_set_options {
     my @paths;
 
     foreach my $argv (@ARGV) {
-        if ($argv ~~ [keys %options]) {
-            $options{$argv} = $true;
+        if ($argv ~~ [keys %OPTIONS]) {
+            $OPTIONS{$argv} = $TRUE;
         } else {
             push @paths, $argv;
         }
@@ -99,7 +108,7 @@ sub get_paths_and_set_options {
 sub error {
     my ($message) = @_;
 
-    if (!$options{'--quiet'}) {
+    if (!$OPTIONS{'--quiet'}) {
         if (-t STDOUT) {
             print RED();
             print "Error: $message\n";
@@ -110,38 +119,96 @@ sub error {
     }
 }
 
-sub is_git_repo {
+=begin comment
+
+Subs that check git repo
+
+They return 2 values: 1) $check_status (from %STATUSES) 2) $fail_text that
+should be printed
+
+=end comment
+
+=cut
+
+sub is_dir {
     my ($path) = @_;
 
-    `cd $path; git status 2>&1`;
-    return ${^CHILD_ERROR_NATIVE} ? $false : $true;
+    if (-d $path) {
+        return $STATUSES{success};
+    } elsif ( (not -d $path) and $OPTIONS{'--ignore_missing'}) {
+        return $STATUSES{skip};
+    } else {
+        return (
+            $STATUSES{fail},
+            "path '$path' is not a directory"
+        );
+    }
 }
 
-sub has_unstaged_changes {
-    my ($path) = @_;
-
-    `cd $path; git diff --exit-code 2>&1`;
-    return ${^CHILD_ERROR_NATIVE} ? $false : $true;
-}
-
-sub has_staged_changes {
-    my ($path) = @_;
-
-    `cd $path; git diff --cached --exit-code 2>&1`;
-    return ${^CHILD_ERROR_NATIVE} ? $false : $true;
-}
-
-sub has_untracked {
+sub has_no_untracked {
     my ($path) = @_;
 
     my $output = `cd $path; git status --porcelain`;
     my @remotes = split(/\n/, $output);
 
+    my $has_untracked = $FALSE;
     foreach my $line (@remotes) {
-        return $true if $line =~ /^\?\?/;
+        $has_untracked = $TRUE if $line =~ /^\?\?/;
     }
 
-    return $false;
+    if (not $has_untracked) {
+        return $STATUSES{success};
+    } else {
+        return (
+            $STATUSES{fail},
+            "path '$path' has untracked files",
+        );
+    }
+}
+
+sub is_git_repo {
+    my ($path) = @_;
+
+    `cd $path; git status 2>&1`;
+
+    if (not ${^CHILD_ERROR_NATIVE}) {
+        return $STATUSES{success};
+    } else {
+        return (
+            $STATUSES{fail},
+            "path '$path' is not a git repository"
+        );
+    }
+}
+
+sub has_no_unstaged_changes {
+    my ($path) = @_;
+
+    `cd $path; git diff --exit-code 2>&1`;
+
+    if (not ${^CHILD_ERROR_NATIVE}) {
+        return $STATUSES{success};
+    } else {
+        return (
+            $STATUSES{fail},
+            "path '$path' has unstaged changes"
+        );
+    }
+}
+
+sub has_no_staged_changes {
+    my ($path) = @_;
+
+    `cd $path; git diff --cached --exit-code 2>&1`;
+
+    if (not ${^CHILD_ERROR_NATIVE}) {
+        return $STATUSES{success};
+    } else {
+        return (
+            $STATUSES{fail},
+            "path '$path' has staged changes",
+        );
+    }
 }
 
 sub has_origin {
@@ -150,75 +217,57 @@ sub has_origin {
     my $output = `cd $path; git remote`;
     my @remotes = split(/\n/, $output);
 
+    my $has_origin;
     foreach my $remote (@remotes) {
-        return $true if $remote eq 'origin';
+        $has_origin = $TRUE if $remote eq 'origin';
     }
 
-    return $false;
+    if ($has_origin) {
+        return $STATUSES{success};
+    } else {
+        return (
+            $STATUSES{fail},
+            "path '$path' has no remote 'origin'",
+        );
+    }
 }
 
 # http://stackoverflow.com/questions/8830833/check-that-the-local-git-repo-has-everything-commited-and-pushed-to-master
-sub has_divergences_with_origin {
+sub has_no_divergences_with_origin {
     my ($path) = @_;
 
     my $output = `cd $path; git branch`;
     my @branches = map { s/..(.*)/$1/; $_; } split(/\n/, $output);
 
+    my $has_divergences_with_origin;
     foreach my $branch (@branches) {
         next if $branch eq '(no branch)';
         my $local = `cd $path; git rev-parse --verify $branch 2>&1`;
         my $origin = `cd $path; git rev-parse --verify origin/$branch 2>&1`;
-        return $true if $local ne $origin;
+
+        $has_divergences_with_origin = $TRUE if $local ne $origin;
     }
 
-    return $false;
+    if (not $has_divergences_with_origin) {
+        return $STATUSES{success};
+    } else {
+        return (
+            $STATUSES{fail},
+            "path '$path' has some divergences with remote 'origin'",
+        );
+    }
 }
-
-my $checks = [
-    {
-        text => sub { error("path '$_[0]' is a file") },
-        func => sub { return -f $_[0] },
-    },
-    {
-        text => sub { error("path '$_[0]' does not exist") },
-        func => sub { return !-d $_[0] },
-    },
-    {
-        text => sub { error("path '$_[0]' is not a git repository") },
-        func => sub { return !is_git_repo($_[0]) },
-    },
-    {
-        text => sub { error("path '$_[0]' has unstaged changes") },
-        func => sub { return !has_unstaged_changes($_[0]) },
-    },
-    {
-        text => sub { error("path '$_[0]' has staged changes") },
-        func => sub { return !has_staged_changes($_[0]) },
-    },
-    {
-        text => sub { error("path '$_[0]' has untracked files") },
-        func => sub { return has_untracked($_[0]) },
-    },
-    {
-        text => sub { error("path '$_[0]' has no remote 'origin'") },
-        func => sub { return !has_origin($_[0]) },
-    },
-    {
-        text => sub { error("path '$_[0]' has some divergences with remote 'origin'") },
-        func => sub { return has_divergences_with_origin($_[0]) },
-    },
-];
 
 # main
 my @paths = get_paths_and_set_options();
 
-if ($options{'--help'}) {
+if ($OPTIONS{'--help'}) {
     pod2usage({
-        -exitval => $success_exit_status,
+        -exitval => $SUCCESS_EXIT_STATUS,
     });
-} elsif ($options{'--version'}) {
+} elsif ($OPTIONS{'--version'}) {
     print "is_git_synced $VERSION\n";
-    exit $success_exit_status;
+    exit $SUCCESS_EXIT_STATUS;
 }
 
 my $was_error;
@@ -229,12 +278,31 @@ if (!@paths) {
 }
 
 foreach my $path (@paths) {
+
+    my @checks = (
+        \&is_dir,
+        \&is_git_repo,
+        \&has_no_untracked,
+        \&has_no_unstaged_changes,
+        \&has_no_staged_changes,
+        \&has_origin,
+        \&has_no_divergences_with_origin,
+    );
+
     my $local_error;
+    my $skipped;
 
     CHECKS:
-    foreach my $check (@{$checks}) {
-        if ($check->{func}->($path)) {
-            $check->{text}->($path);
+    foreach my $check (@checks) {
+        my ($check_result, $fail_text) = $check->($path);
+
+        if ($check_result == $STATUSES{success}) {
+            next CHECKS;
+        } elsif ($check_result == $STATUSES{skip}) {
+            $skipped = $TRUE;
+            last CHECKS;
+        } elsif ($check_result == $STATUSES{fail}) {
+            error($fail_text);
             $local_error = 1;
             last CHECKS;
         }
@@ -242,18 +310,21 @@ foreach my $path (@paths) {
 
     if ($local_error) {
         $was_error++;
+    } elsif ($skipped) {
+        print "Skipping path '$path'\n" if (!$OPTIONS{'--quiet'} && !$OPTIONS{'--only_errors'});
     } else {
-        print "Success: path '$path' has no local changes and fully synced to remote\n" if (!$options{'--quiet'} && !$options{'--only_errors'});
+        print "Success: path '$path' has no local changes and fully synced to remote\n" if (!$OPTIONS{'--quiet'} && !$OPTIONS{'--only_errors'});
     }
+
 }
 
 if (!$was_error) {
-    if ($options{'--show_ok'}) {
+    if ($OPTIONS{'--show_ok'}) {
         print GREEN();
         print "ok\n";
         print RESET();
     }
-    exit $success_exit_status;
+    exit $SUCCESS_EXIT_STATUS;
 } else {
-    exit $error_exit_status;
+    exit $ERROR_EXIT_STATUS;
 }
