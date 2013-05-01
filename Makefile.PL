@@ -1,20 +1,59 @@
+
 use strict;
 use warnings;
-use ExtUtils::MakeMaker;
 
-WriteMakefile(
-    NAME                => 'App::IsGitSynced',
-    AUTHOR              => q{Ivan Bessarabov <ivan@bessarabov.ru>},
-    VERSION_FROM        => 'lib/App/IsGitSynced.pm',
-    ABSTRACT_FROM       => 'lib/App/IsGitSynced.pm',
-    ($ExtUtils::MakeMaker::VERSION >= 6.3002
-      ? ('LICENSE'=> 'perl')
-      : ()),
-    PL_FILES            => {},
-    EXE_FILES    => [ grep { /\w$/ } glob("script/*") ],
-    PREREQ_PM => {
-        'Test::More' => 0,
-    },
-    dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
-    clean               => { FILES => 'App-IsGitSynced-*' },
+
+
+use ExtUtils::MakeMaker 6.30;
+
+
+
+my %WriteMakefileArgs = (
+  "ABSTRACT" => "script to find out if the local git repos are fully synced",
+  "AUTHOR" => "Ivan Bessarabov <ivan\@bessarabov.ru>",
+  "BUILD_REQUIRES" => {
+    "Test::More" => 0
+  },
+  "CONFIGURE_REQUIRES" => {
+    "ExtUtils::MakeMaker" => "6.30"
+  },
+  "DISTNAME" => "App-IsGitSynced",
+  "EXE_FILES" => [
+    "bin/is_git_synced"
+  ],
+  "LICENSE" => "perl",
+  "NAME" => "App::IsGitSynced",
+  "PREREQ_PM" => {
+    "Hash::Util" => 0,
+    "Pod::Usage" => 0,
+    "Term::ANSIColor" => 0,
+    "strict" => 0,
+    "warnings" => 0
+  },
+  "VERSION" => "0.05",
+  "test" => {
+    "TESTS" => "t/*.t"
+  }
 );
+
+
+unless ( eval { ExtUtils::MakeMaker->VERSION(6.56) } ) {
+  my $br = delete $WriteMakefileArgs{BUILD_REQUIRES};
+  my $pp = $WriteMakefileArgs{PREREQ_PM};
+  for my $mod ( keys %$br ) {
+    if ( exists $pp->{$mod} ) {
+      $pp->{$mod} = $br->{$mod} if $br->{$mod} > $pp->{$mod};
+    }
+    else {
+      $pp->{$mod} = $br->{$mod};
+    }
+  }
+}
+
+delete $WriteMakefileArgs{CONFIGURE_REQUIRES}
+  unless eval { ExtUtils::MakeMaker->VERSION(6.52) };
+
+WriteMakefile(%WriteMakefileArgs);
+
+
+
