@@ -1,6 +1,6 @@
 package App::IsGitSynced;
 {
-  $App::IsGitSynced::VERSION = '0.05';
+  $App::IsGitSynced::VERSION = '1.0.0';
 }
 
 # ABSTRACT: script to find out if the local git repos are fully synced
@@ -18,11 +18,16 @@ App::IsGitSynced - script to find out if the local git repos are fully synced
 
 =head1 VERSION
 
-version 0.05
+version 1.0.0
 
 =head1 SYNOPSIS
 
 Please read L<is_git_synced> documentation.
+
+=head1 DESCRIPTION
+
+App::IsGitSynced version numbers uses Semantic Versioning standart.
+Please visit L<http://semver.org/> to find out all about this great thing.
 
 =head1 AUTHOR
 

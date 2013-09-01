@@ -12,3 +12,4 @@ t/00-load.t
 t/author-boilerplate.t
 t/author-pod-coverage.t
 t/author-pod.t
+t/release-cpan-changes.t
