@@ -1,6 +1,6 @@
 package App::IsGitSynced;
 {
-  $App::IsGitSynced::VERSION = '1.0.1';
+  $App::IsGitSynced::VERSION = '1.0.2';
 }
 
 # ABSTRACT: script to find out if the local git repos are fully synced
@@ -20,7 +20,7 @@ App::IsGitSynced - script to find out if the local git repos are fully synced
 
 =head1 VERSION
 
-version 1.0.1
+version 1.0.2
 
 =head1 SYNOPSIS
 

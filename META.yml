@@ -23,4 +23,4 @@ resources:
   bugtracker: https://github.com/bessarabov/App-IsGitSynced/issues
   homepage: https://github.com/bessarabov/App-IsGitSynced
   repository: https://github.com/bessarabov/App-IsGitSynced.git
-version: 1.0.1
+version: 1.0.2

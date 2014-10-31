@@ -41,7 +41,7 @@ sub get_paths_and_set_options {
     my @paths;
 
     foreach my $argv (@ARGV) {
-        if ($argv ~~ [keys %OPTIONS]) {
+        if (grep {$argv eq $_} keys %OPTIONS) {
             $OPTIONS{$argv} = $TRUE;
         } else {
             push @paths, $argv;
@@ -279,7 +279,7 @@ is_git_synced
 
 =head1 VERSION
 
-version 1.0.1
+version 1.0.2
 
 =head1 SYNOPSIS
 
